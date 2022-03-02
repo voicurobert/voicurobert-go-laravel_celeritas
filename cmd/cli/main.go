@@ -43,6 +43,7 @@ func main() {
 			exitGracefully(err)
 		}
 		message = "Migrations complete!"
+
 	default:
 		showHelp()
 	}
