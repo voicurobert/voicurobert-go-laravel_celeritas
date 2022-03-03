@@ -5,7 +5,9 @@ import (
 	"github.com/CloudyKit/jet/v6"
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/gomodule/redigo/redis"
 	"github.com/joho/godotenv"
+	"github.com/voicurobert/celeritas/cache"
 	"github.com/voicurobert/celeritas/render"
 	"github.com/voicurobert/celeritas/session"
 	"log"
@@ -31,6 +33,7 @@ type Celeritas struct {
 	Session       *scs.SessionManager
 	DB            Database
 	EncryptionKey string
+	Cache         cache.Cache
 }
 
 type config struct {
@@ -39,6 +42,7 @@ type config struct {
 	cookie      cookieConfig
 	sessionType string
 	database    databaseConfig
+	redis       redisConfig
 }
 
 func (c *Celeritas) New(rootPath string) error {
@@ -60,6 +64,11 @@ func (c *Celeritas) New(rootPath string) error {
 	err = godotenv.Load(rootPath + "/.env")
 	if err != nil {
 		return err
+	}
+
+	if os.Getenv("CACHE") == "redis" {
+		myRedisCache := c.createClientRedisCache()
+		c.Cache = myRedisCache
 	}
 
 	// create loggers
@@ -85,6 +94,11 @@ func (c *Celeritas) New(rootPath string) error {
 		database: databaseConfig{
 			dsn:      c.BuildDsn(),
 			database: os.Getenv("DATABASE_TYPE"),
+		},
+		redis: redisConfig{
+			host:     os.Getenv("REDIS_HOST"),
+			password: os.Getenv("REDIS_PASSWORD"),
+			prefix:   os.Getenv("REDIS_PREFIX"),
 		},
 	}
 
@@ -183,6 +197,31 @@ func (c *Celeritas) createRenderer() {
 		Session:    c.Session,
 	}
 	c.Render = &myRenderer
+}
+
+func (c *Celeritas) createClientRedisCache() *cache.RedisCache {
+	return &cache.RedisCache{
+		Conn:   c.createRedisPool(),
+		Prefix: c.config.redis.prefix,
+	}
+}
+
+func (c *Celeritas) createRedisPool() *redis.Pool {
+	return &redis.Pool{
+		Dial: func() (redis.Conn, error) {
+			return redis.Dial("tcp", c.config.redis.host, redis.DialPassword(c.config.redis.password))
+		},
+		DialContext: nil,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		MaxIdle:         50,
+		MaxActive:       10000,
+		IdleTimeout:     240 * time.Second,
+		Wait:            false,
+		MaxConnLifetime: 0,
+	}
 }
 
 func (c *Celeritas) BuildDsn() string {
