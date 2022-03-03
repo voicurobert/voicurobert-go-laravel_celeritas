@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/CloudyKit/jet/v6"
 	"github.com/alexedwards/scs/v2"
+	"github.com/justinas/nosurf"
 	"html/template"
 	"log"
 	"net/http"
@@ -40,6 +41,7 @@ func (r *Render) defaultData(td *TemplateData, req *http.Request) {
 	if r.Session.Exists(req.Context(), "userID") {
 		td.IsAuthenticated = true
 	}
+	td.CSRFToken = nosurf.Token(req)
 }
 
 func (r *Render) Page(w http.ResponseWriter, req *http.Request, view string, variables, data interface{}) error {
